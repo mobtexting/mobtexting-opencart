@@ -1,0 +1,135 @@
+<modification>
+    <id>si</id>
+    <version>1.5.1</version>
+    <vqmver>2.X</vqmver>
+    <author>TGM</author>
+    <file name="system/startup.php">
+        <operation error="log">
+            <search position="after"><![CDATA[require_once(DIR_SYSTEM . 'library/template.php');]]></search>
+            <add><![CDATA[require_once(modification(DIR_SYSTEM . 'library/mobsms.php'));]]></add>
+        </operation>
+    </file>
+
+    <file name="admin/model/sale/order.php">
+        <operation error="log">
+            <search position="after"><![CDATA[$language->load('mail/order');]]></search>
+            <add><![CDATA[
+                if ($this->config->get('mobsms_order_status_enabled') == "1") {
+                    $si = new MobSMS();
+                    $si->setApi($this->config->get('mobsms_username'),$this->config->get('mobsms_password'));
+                    $order_status_query = $this->db->query("SELECT * FROM " . DB_PREFIX . "order_status WHERE order_status_id = '" . (int)$data['order_status_id'] . "' AND language_id = '" . (int)$order_info['language_id'] . "'");
+                    if(isset($order_status_query->row['name'])){
+                        $message = $this->config->get('message_of_order_status');
+                        $accurate = array($order_id, $order_status_query->row['name'],$order_info['customer']);
+                    }
+                    else{
+                        $message = "Status of you order # {{order_id}} has been changed Thanks";
+                        $accurate = array($order_id,'',$order_info['customer']);
+                    }
+                    $message = $si->getMessage($accurate,$message);
+                    $si->send($this->config->get('order_status_sender_number',$order_info['telephone'],1,$message,$this->db);
+                    if($this->config->get('mobsms_notify_admin_value') == "1"){
+                        if($this->config->get('mobsms_admin_alert_order_status') == "1"){
+                            if(isset($order_status_query->row['name'])){
+                                $message = "Your customer {{customer}}'s order status has been changed to {{order_status}} of order id {{order_id}}";
+                                $accurate = array($order_id, $order_status_query->row['name'],$order_info['customer']);
+                            }
+                            else{
+                                $message = "Your customer {{customer}}'s order status has been changed of order id {{order_id}}";
+                                $accurate = array($order_id,'',$order_info['customer']);
+                            }
+                            $message = $si->getMessage($accurate,$message);
+                            $destination = $this->config->get('mobsms_admin_telephone_value');
+                            $si->send($order_info['store_name'],$destination,1,$message,$this->db);
+                        }
+                    }
+                }
+			]]></add>
+        </operation>
+    </file>
+
+    <file name="catalog/model/account/customer.php">
+        <operation error="log">
+            <search position="after"><![CDATA[// Send to main admin email if new account email is enabled]]></search>
+            <add><![CDATA[
+			if ($this->config->get('mobsms_admin_alert_customer_register') == "1") {
+			    $si = new MobSMS();
+				$si->setApi($this->config->get('mobsms_username'),$this->config->get('mobsms_password'));
+			    $message = "A new customer ".$data['firstname']." has created an account";
+				$destination = $this->config->get('mobsms_admin_telephone_value');
+                $si->send('OPENCART',$destination,1,$message,$this->db);
+                $originator = $order_info['store_name'];
+                $message = "hello {{customer}} Thank You for signing up";
+				$accurate = array('','',$data['firstname']);
+                $message = $si->getMessage($accurate,$admin_message);
+                $si->send($originator,$data['telephone'],1,$message,$this->db);
+			}
+			]]></add>
+        </operation>
+    </file>
+
+    <file name="catalog/model/checkout/order.php">        
+        <operation error="log">
+            <search position="before"><![CDATA[// Admin Alert Mail]]></search>
+            <add><![CDATA[
+			    if($this->config->get('mobsms_order_enabled_value') == "1"){
+			        $si = new MobSMS();
+			        $message = "";
+			        $si->setApi($this->config->get('mobsms_username'),$this->config->get('mobsms_password'));
+			        $originator = $this->config->get('order_sender_number');
+			        
+                    $sid =  $_REQUEST['order_status_id'];
+                    $stat_name = $si->getStatus($sid);
+                    $stat_name = ($stat_name == "Canceled Reversal") ? "Canceled_Reversal" : $stat_name;
+                    $ordid = $order_info['order_id'];
+                    if($this->config->get('mobsms_order_status_enabled') == "1" && $sid && $this->config->get('mobsms_admin_alert_order_status') == "1") {
+                        $message = $this->config->get('mobsms_'."$stat_name".'_message_of_order_status');
+                        $accurate = array($order_info['order_id'],$order_info['firstname'],$order_info['lastname'],$order_info['email'],$order_info['total'],$order_info['currency_code'],$order_info['invoice_prefix'],$order_info['shipping_company'],$order_info['shipping_address_1'],$order_info['shipping_address_2'],$order_info['shipping_city'],$order_info['shipping_postcode'],$order_info['shipping_zone'],$order_info['shipping_country'],$order_info['payment_method']);
+
+                        $message = $si->getMessageForCheckout($accurate,$message);
+                        if($message == "") {
+                            $message = "Hello Your OrderID # $ordid Status is Changed to : $stat_name";
+                        }
+
+                        if(isset($order_info['telephone'])){
+	                        $destination = $order_info['telephone'];
+	                        $si->send($originator,$destination,1,$message,$this->db);
+	                    }
+                    }
+                    if($message == "" && !$sid)  {
+                        $message = $this->config->get('mobsms_order_message_value');
+                        $accurate = array($order_info['order_id'],$order_info['firstname'],$order_info['lastname'],$order_info['email'],$order_info['total'],$order_info['currency_code'],$order_info['invoice_prefix'],$order_info['shipping_company'],$order_info['shipping_address_1'],$order_info['shipping_address_2'],$order_info['shipping_city'],$order_info['shipping_postcode'],$order_info['shipping_zone'],$order_info['shipping_country'],$order_info['payment_method']);
+
+                        $message = $si->getMessageForCheckout($accurate,$message);
+                        if(isset($order_info['telephone'])){
+	                        $destination = $order_info['telephone'];
+	                        $si->send($originator,$destination,1,$message,$this->db);
+	                    }
+                    }      
+                }
+
+            ]]></add>
+        </operation>
+        <operation error="log">
+            <search position="after"><![CDATA[// Admin Alert Mail]]></search>
+            <add><![CDATA[
+            if($this->config->get('mobsms_notify_admin') == "1"){
+                if($this->config->get('mobsms_admin_alert_customer_checkout') == "1"){
+                    $si = new MobSMS();
+                    $si->setApi($this->config->get('mobsms_username'),$this->config->get('mobsms_password'));
+                    $destination = $this->config->get('mobsms_admin_telephone_value');
+                    $originator = $order_info['store_name'];
+                    $message = "{{firstname}} has placed an order with id #{{order_id}} amount of {{total}} {{currency_code}}";
+                    
+                    if(!$sid) {
+                        $accurate = array($order_info['order_id'],$order_info['firstname'],$order_info['lastname'],$order_info['email'],$order_info['total'],$order_info['currency_code'],$order_info['invoice_prefix'],$order_info['shipping_company'],$order_info['shipping_address_1'],$order_info['shipping_address_2'],$order_info['shipping_city'],$order_info['shipping_postcode'],$order_info['shipping_zone'],$order_info['shipping_country'],$order_info['payment_method'], );
+                        $message = $si->getMessageForCheckout($accurate,$message);
+                        $si->send($originator,$destination,1,$message,$this->db);
+                    }
+                }
+            }
+            ]]></add>
+        </operation>
+    </file>
+
+</modification>

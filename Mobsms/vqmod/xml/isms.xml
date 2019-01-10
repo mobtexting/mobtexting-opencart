@@ -1,0 +1,136 @@
+<modification>
+	<id>iSMS</id>
+	<version>1.5.1</version>
+	<vqmver>2.X</vqmver>
+	<author>iSMS</author>
+	<file name="system/startup.php">
+		<operation error="log">
+			<search position="after"><![CDATA[require_once(DIR_SYSTEM . 'library/template.php');]]></search>
+			<add><![CDATA[require_once(DIR_SYSTEM . 'library/isms.php');]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/controller/common/header.php">
+		<operation error="log">
+			<search position="after"><![CDATA[$this->data['text_contact'] = $this->language->get('text_contact');]]></search>
+			<add><![CDATA[		$this->data['text_isms'] = $this->language->get('text_isms');]]></add>
+		</operation>
+		<operation error="log">
+			<search position="after"><![CDATA[$this->data['contact'] = $this->url->link('sale/contact', 'token=' . $this->session->data['token'], 'SSL');]]></search>
+			<add><![CDATA[			$this->data['isms'] = $this->url->link('sale/isms', 'token=' . $this->session->data['token'], 'SSL');]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/language/*/common/header.php">
+		<operation error="log">
+			<search position="after"><![CDATA[$_['text_contact']                     = 'Mail';]]></search>
+			<add><![CDATA[$_['text_isms']                     = 'iSMS';]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/language/*/mail/order.php">
+		<operation error="log">
+			<search position="after"><![CDATA[$_['text_footer']       = 'Please reply to this email if you have any questions.';]]></search>
+			<add><![CDATA[$_['text_customer_alert_order_status_notify']   = 'Hi, your order, order ID: %s has just been updated to status: %s';]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/view/template/common/header.tpl">
+		<operation error="log">
+			<search position="after"><![CDATA[<li><a href="<?php echo $contact; ?>"><?php echo $text_contact; ?></a></li>]]></search>
+			<add><![CDATA[          <li><a href="<?php echo $isms; ?>"><?php echo $text_isms; ?></a></li>]]></add>
+		</operation>
+	</file>
+	
+	<file name="admin/model/sale/order.php">
+		<operation error="log">
+			<search position="after"><![CDATA[$language->load('mail/order');]]></search>
+			<add><![CDATA[
+			if ($this->config->get('isms_customer_alert_order_status') == "1") {
+				
+				$order_status_query = $this->db->query("SELECT * FROM " . DB_PREFIX . "order_status WHERE order_status_id = '" . (int)$data['order_status_id'] . "' AND language_id = '" . (int)$order_info['language_id'] . "'");
+				
+				$message = sprintf($language->get('text_customer_alert_order_status_notify'), $order_id, $order_status_query->row['name']);
+				
+				$isms = new iSMS();
+				
+				$isms->setiSMS($this->config->get('isms_username'), $this->config->get('isms_password'));
+				$result = $isms->send($this->config->get('isms_admin_contact'), $order_info['telephone'], $this->config->get('isms_message_type'), $message, $this->db);				
+			}
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="catalog/model/account/customer.php">
+		<operation error="log">
+			<search position="after"><![CDATA[// Send to main admin email if new account email is enabled]]></search>
+			<add><![CDATA[
+			if ($this->config->get('isms_admin_alert_register') == "1") {
+				$this->language->load('account/isms');
+				
+				$message = sprintf($this->language->get('text_isms_new_customer_registered'), $data['firstname'] . ' ' . $data['lastname']);
+				
+				$isms = new iSMS();
+				
+				$isms->setiSMS($this->config->get('isms_username'), $this->config->get('isms_password'));
+				$result = $isms->send($this->config->get('isms_admin_contact'), $this->config->get('isms_admin_contact'), $this->config->get('isms_message_type'), $message, $this->db);				
+			}
+			]]></add>
+		</operation>
+	</file>
+	
+	<file name="catalog/model/checkout/order.php">
+		<operation error="log">
+			<search position="after"><![CDATA[// Admin Alert Mail]]></search>
+			<add><![CDATA[
+			if ($this->config->get('isms_admin_alert_checkout') == "1") {
+				$this->language->load('account/isms');
+				
+				$message = sprintf($this->language->get('text_isms_customer_checkout'), $order_info['payment_firstname'] . ' ' . $order_info['payment_lastname'], $order_id);
+				
+				if($this->config->get('isms_admin_alert_include_items') == "1"){
+					
+					foreach ($order_product_query->rows as $result) {
+						$message .= "\n".$result['quantity'] . 'x ' . $result['name'];
+					}
+				}
+				
+				if($this->config->get('isms_admin_alert_allow_long_message') != "1"){
+					
+					if($this->config->get('isms_message_type') == "1"){
+						
+						$message_length = 159;
+					}
+					elseif($this->config->get('isms_message_type') == "2"){
+						
+						$message_length = 69;
+					}
+					
+					$message = substr($message, 0, $message_length);
+				}
+				
+				$isms = new iSMS();
+				
+				$isms->setiSMS($this->config->get('isms_username'), $this->config->get('isms_password'));
+				$result = $isms->send($this->config->get('isms_admin_contact'), $this->config->get('isms_admin_contact'), $this->config->get('isms_message_type'), $message, $this->db);				
+			}
+			]]></add>
+		</operation>
+		<operation error="log">
+			<search position="before"><![CDATA[// Admin Alert Mail]]></search>
+			<add><![CDATA[
+			if ($this->config->get('isms_customer_alert_ckeckout') == "1") {
+				$this->language->load('account/isms');
+				
+				$message = sprintf($this->language->get('text_isms_customer_checkout_successful'), $order_id);
+				
+				$isms = new iSMS();
+				
+				$isms->setiSMS($this->config->get('isms_username'), $this->config->get('isms_password'));
+				$result = $isms->send($this->config->get('isms_admin_contact'), $order_info['telephone'], $this->config->get('isms_message_type'), $message, $this->db);				
+			}
+			]]></add>
+		</operation>
+	</file>
+	
+</modification>
